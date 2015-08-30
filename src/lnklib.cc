@@ -4,6 +4,7 @@
 #include <vector>
 #include "lnklib.h"
 #include "loader.h"
+#include "callable.h"
 
 #include <stdio.h>
 
@@ -13,6 +14,7 @@ void init(v8::Handle<v8::Object> exports)
     NODE_SET_METHOD(exports, "unload", unload);
     NODE_SET_METHOD(exports, "getFunction", getFunction);
     NODE_SET_METHOD(exports, "clearFunction", clearFunction);
+    NODE_SET_METHOD(exports, "execute", execute);
 }
 
 char* getV8String(v8::Local<v8::Value> value)
@@ -252,6 +254,36 @@ void clearFunction(const v8::FunctionCallbackInfo<v8::Value>& args)
     else
     {
         isolate->ThrowException(v8::Exception::Error(v8::String::NewFromUtf8(isolate, "Must supply a function handle ID")));
+    }
+}
+
+void execute(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
+	v8::HandleScope scope(isolate);
+    
+    if(args.Length() > 3)
+    {
+        if(args[0]->IsInt32())
+        {
+            callable function = (callable)getHandle((long)v8::Handle<v8::Integer>::Cast(args[0])->Value(), LibraryHandleTypeFunction);
+            if(function)
+            {
+                // TODO: call function
+            }
+            else
+            {
+                isolate->ThrowException(v8::Exception::Error(v8::String::NewFromUtf8(isolate, "No function linked with the given handle ID")));
+            }
+        }
+        else
+        {
+            isolate->ThrowException(v8::Exception::TypeError(v8::String::NewFromUtf8(isolate, "Invalid function handle, must be an integer")));
+        }
+    }
+    else
+    {
+        isolate->ThrowException(v8::Exception::Error(v8::String::NewFromUtf8(isolate, "Must supply a function handle ID, a return type, a parameter map array, and a parameter array")));
     }
 }
 

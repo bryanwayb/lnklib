@@ -4,7 +4,8 @@
       "target_name": "lnklib",
       "sources": [
         "src/lnklib.cc",
-        "src/loader.cc"
+        "src/loader.cc",
+        "src/callable.cc"
       ],
       "conditions": [
         [ "OS == 'mac'", {
