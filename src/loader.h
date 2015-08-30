@@ -6,10 +6,13 @@ enum ErrorCode
 	ErrorCodeNone,
 	ErrorCodeUnknown,
 	ErrorCodeBadFormat,
-	ErrorCodeNotFound
+	ErrorCodeNotFound,
+	ErrorCodeLibraryNotLoaded,
+	ErrorCodeFunctionNotFound
 };
 
 void* loadLibrary(char*, ErrorCode*);
-bool unloadLibrary(void *handle);
+bool unloadLibrary(void*);
+void* loadAddress(void*, char*, ErrorCode*);
 
 #endif

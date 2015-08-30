@@ -7,13 +7,12 @@
 
 #include <stdio.h>
 
-void load(const v8::FunctionCallbackInfo<v8::Value>&);
-void unload(const v8::FunctionCallbackInfo<v8::Value>&);
-
 void init(v8::Handle<v8::Object> exports)
 {
 	NODE_SET_METHOD(exports, "load", load);
     NODE_SET_METHOD(exports, "unload", unload);
+    NODE_SET_METHOD(exports, "getFunction", getFunction);
+    NODE_SET_METHOD(exports, "clearFunction", clearFunction);
 }
 
 char* getV8String(v8::Local<v8::Value> value)
@@ -39,6 +38,12 @@ void throwExceptionForErrorCode(v8::Isolate* isolate, ErrorCode error)
         case ErrorCodeNotFound:
 			errorMsg = "Could not find library path";
 			break;
+        case ErrorCodeLibraryNotLoaded:
+            errorMsg = "No library loaded with the given handle ID";
+            break;
+        case ErrorCodeFunctionNotFound:
+            errorMsg = "Could not find exported function";
+            break;
 		default:
 			errorMsg = "An error has occurred";
 			break;
@@ -50,11 +55,11 @@ void throwExceptionForErrorCode(v8::Isolate* isolate, ErrorCode error)
 	}
 }
 
-struct LibraryHandleStore *libraryHandles = NULL;
-size_t libraryHandleCount = 0;
-long libraryLastId = 0;
+static struct LibraryHandleStore *libraryHandles = NULL;
+static size_t libraryHandleCount = 0;
+static long libraryLastId = 0;
     
-void* getHandle(long id)
+void* getHandle(long id, LibraryHandleType type)
 {
     void *ret = NULL;
     if(libraryHandleCount > 0 && libraryHandles != NULL)
@@ -64,7 +69,10 @@ void* getHandle(long id)
         {
             if(id == lptr->Id)
             {
-                ret = lptr->Handle;
+                if(lptr->Type == type)
+                {
+                    ret = lptr->Handle;
+                }
                 break;
             }
         }
@@ -72,7 +80,7 @@ void* getHandle(long id)
     return ret;
 }
 
-long addHandle(void *handle)
+long addHandle(void *handle, LibraryHandleType type)
 {
     if(libraryHandles == NULL)
     {
@@ -85,26 +93,32 @@ long addHandle(void *handle)
     
     libraryHandles[libraryHandleCount].Id = ++libraryLastId;
     libraryHandles[libraryHandleCount].Handle = handle;
+    libraryHandles[libraryHandleCount].Type = type;
     
     return libraryHandles[libraryHandleCount++].Id;
 }
 
-bool removeHandle(long id)
+bool removeHandle(long id, LibraryHandleType type)
 {
     if(libraryHandleCount > 0 && libraryHandles != NULL)
     {
         size_t i = 0;
         
         LibraryHandleStore *lptr = libraryHandles;
+        bool foundIndex = false;
         for(; i < libraryHandleCount; i++, lptr++)
         {
             if(id == lptr->Id)
             {
+                if(lptr->Type == type)
+                {
+                    foundIndex = true;
+                }
                 break;
             }
         }
         
-        if(i < libraryHandleCount)
+        if(foundIndex)
         {
             size_t newSize = libraryHandleCount - 1;
             for(; i < newSize; i++)
@@ -135,6 +149,7 @@ void load(const v8::FunctionCallbackInfo<v8::Value>& args)
             
             ErrorCode error;
             void *handle = loadLibrary(libraryPath, &error);
+            free(libraryPath);
             
             if(error != ErrorCodeNone)
             {
@@ -146,7 +161,7 @@ void load(const v8::FunctionCallbackInfo<v8::Value>& args)
             }
             else
             {
-                args.GetReturnValue().Set(v8::Integer::New(isolate, addHandle(handle)));
+                args.GetReturnValue().Set(v8::Integer::New(isolate, addHandle(handle, LibraryHandleTypeModule)));
             }
         }
         else
@@ -170,7 +185,7 @@ void unload(const v8::FunctionCallbackInfo<v8::Value>& args)
         if(args[0]->IsInt32())
         {
             long handleId = (long)v8::Handle<v8::Integer>::Cast(args[0])->Value();
-            args.GetReturnValue().Set(v8::Boolean::New(isolate, unloadLibrary(getHandle(handleId)) && removeHandle(handleId)));
+            args.GetReturnValue().Set(v8::Boolean::New(isolate, unloadLibrary(getHandle(handleId, LibraryHandleTypeModule)) && removeHandle(handleId, LibraryHandleTypeModule)));
         }
         else
         {
@@ -180,6 +195,63 @@ void unload(const v8::FunctionCallbackInfo<v8::Value>& args)
     else
     {
         isolate->ThrowException(v8::Exception::Error(v8::String::NewFromUtf8(isolate, "Must supply a library handle ID")));
+    }
+}
+
+void getFunction(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
+	v8::HandleScope scope(isolate);
+    
+    if(args.Length() > 1)
+    {
+        if(args[0]->IsInt32() && args[1]->IsString())
+        {
+            char *exportedName = getV8String(args[1]);
+            
+            ErrorCode error;
+            void *address = loadAddress(getHandle((long)v8::Handle<v8::Integer>::Cast(args[0])->Value(), LibraryHandleTypeModule), exportedName, &error);
+            free(exportedName);
+            
+            if(error != ErrorCodeNone)
+            {
+                throwExceptionForErrorCode(isolate, error);
+            }
+            else
+            {
+                args.GetReturnValue().Set(v8::Integer::New(isolate, addHandle(address, LibraryHandleTypeFunction)));
+            }
+        }
+        else
+        {
+            isolate->ThrowException(v8::Exception::TypeError(v8::String::NewFromUtf8(isolate, "Invalid parameter type(s), ID must be an integer and the exported name must be a string type")));
+        }
+    }
+    else
+    {
+        isolate->ThrowException(v8::Exception::Error(v8::String::NewFromUtf8(isolate, "Must supply a module ID and an exported name")));
+    }
+}
+
+void clearFunction(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
+	v8::HandleScope scope(isolate);
+    
+    if(args.Length() > 0)
+    {
+        if(args[0]->IsInt32())
+        {
+            args.GetReturnValue().Set(v8::Boolean::New(isolate, removeHandle((long)v8::Handle<v8::Integer>::Cast(args[0])->Value(), LibraryHandleTypeFunction)));
+        }
+        else
+        {
+            isolate->ThrowException(v8::Exception::TypeError(v8::String::NewFromUtf8(isolate, "Invalid parameter type, must be an integer")));
+        }
+    }
+    else
+    {
+        isolate->ThrowException(v8::Exception::Error(v8::String::NewFromUtf8(isolate, "Must supply a function handle ID")));
     }
 }
 

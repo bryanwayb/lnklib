@@ -11,10 +11,9 @@ void* loadLibrary(char *filepath, ErrorCode *error)
 	void *handle = NULL;
 	*error = ErrorCodeNone;
 #if defined(OS_WINDOWS)
-	if((handle = LoadLibraryA(filepath)) == NULL)
+	if(!(handle = LoadLibraryA(filepath)))
 	{
-		unsigned long code = GetLastError();
-		switch(code)
+		switch(GetLastError())
 		{
 			case ERROR_BAD_EXE_FORMAT:
 				*error = ErrorCodeBadFormat;
@@ -36,4 +35,33 @@ bool unloadLibrary(void *handle)
 #if defined(OS_WINDOWS)
 	return FreeLibrary((HMODULE)handle);
 #endif
+}
+
+void* loadAddress(void *handle, char *exportedName, ErrorCode *error)
+{
+	void *ret = NULL;
+	*error = ErrorCodeNone;
+
+	if(!handle)
+	{
+		*error = ErrorCodeLibraryNotLoaded;
+	}
+	else
+	{
+#if defined(OS_WINDOWS)
+		if(!(ret = GetProcAddress((HMODULE)handle, exportedName)))
+		{
+			switch(GetLastError())
+			{
+				case ERROR_PROC_NOT_FOUND:
+					*error = ErrorCodeFunctionNotFound;
+					break;
+				default:
+					*error = ErrorCodeUnknown;
+					break;
+			}
+		}
+#endif
+	}
+	return ret;
 }
