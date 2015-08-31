@@ -5,7 +5,7 @@
       "sources": [
         "src/lnklib.cc",
         "src/loader.cc",
-        "src/callable.cc"
+        "src/dynfunc.cc"
       ],
       "conditions": [
         [ "OS == 'mac'", {

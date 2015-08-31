@@ -4,7 +4,7 @@
 #include <vector>
 #include "lnklib.h"
 #include "loader.h"
-#include "callable.h"
+#include "dynfunc.h"
 
 #include <stdio.h>
 
@@ -266,7 +266,7 @@ void execute(const v8::FunctionCallbackInfo<v8::Value>& args)
     {
         if(args[0]->IsInt32())
         {
-            callable function = (callable)getHandle((long)v8::Handle<v8::Integer>::Cast(args[0])->Value(), LibraryHandleTypeFunction);
+            void* function = (void*)getHandle((long)v8::Handle<v8::Integer>::Cast(args[0])->Value(), LibraryHandleTypeFunction);
             if(function)
             {
                 // TODO: call function

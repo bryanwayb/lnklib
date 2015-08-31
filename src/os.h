@@ -5,6 +5,10 @@
 #undef OS_UNIX
 #undef OS_MAC_OSX
 #undef OS_LINUX
+#undef ARCH_X86
+#undef ARCH_X64
+
+// OS type
 
 #if defined(__APPLE__) || defined(__MACH__)
 #define OS_MAC_OSX
@@ -20,6 +24,16 @@
 
 #if defined(__linux__)
 #define OS_LINUX
+#endif
+
+// Architectures
+
+#if defined(i386) || defined(__i386) || defined(__i386__) || defined(_M_IX86)
+#define ARCH_X86
+#endif
+
+#if defined(__amd64__) || defined(__amd64) || defined(__x86_64__) || defined(__x86_64) || defined(_M_X64) || defined(_M_AMD64)
+#define ARCH_X64
 #endif
 
 #endif
