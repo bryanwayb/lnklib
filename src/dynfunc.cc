@@ -54,40 +54,53 @@ dynamic_exec dynamic_func_compile(struct dynamic_func *df)
 
 	unsigned char *buffer = NULL;
 
-	df->execSize = sizeof(void*) + 4; // Base JIT size, mov, call, and ret
+#if defined(ARCH_X64)
+#define _X64OVERHEAD(n) (n)
+#else
+#define _X64OVERHEAD(n) 0
+#endif
+
+	df->execSize = sizeof(void*) + 4 + _X64OVERHEAD(1); // Base JIT size, mov, call, and ret
 	if (df->params)
 	{
-		df->execSize += df->count * (sizeof(void*) + 3); // mov, push, and pop
+		df->execSize += df->count * (sizeof(void*) + 3 + _X64OVERHEAD(1)); // mov, push, and pop
 		if (df->returns)
 		{
-			df->execSize += 4; // double mov operations
+			df->execSize += 4 + _X64OVERHEAD(2); // double mov operations
 		}
 	}
+
+#undef _X64OVERHEAD
 
 #if defined(OS_WINDOWS)
 	buffer = (unsigned char*)VirtualAlloc(0, df->execSize, MEM_COMMIT, PAGE_READWRITE);
 #endif
 
-#if defined(ARCH_X86)
 	if (buffer)
 	{
 		unsigned char *p = buffer;
+
+#if defined(ARCH_X64)
+#define _X64PREFIX() *p++ = 0x48;
+#else
+#define _X64PREFIX()
+#endif
 
 		if (df->params)
 		{
 			for (size_t i = df->count - 1; i != -1; i--)
 			{
-				*p++ = 0xB8; (void*&)p[0] = (void*)df->params[i]; p += sizeof(void*);
+				_X64PREFIX(); *p++ = 0xB8; (void*&)p[0] = (void*)df->params[i]; p += sizeof(void*); // mov eax, df->params[i]
 				*p++ = 0x50; // push eax
 			}
 		}
 
-		*p++ = 0xB9; (void*&)p[0] = (void*)df->address; p += sizeof(void*); // mov ecx, df->address
-		*p++ = 0xFF; *p++ = ((0x3 & 0x3) << 6) | ((0x7 & 0x2) << 3) | (0x7 & 0x1); // call ecx
+		_X64PREFIX(); *p++ = 0xB8; (void*&)p[0] = (void*)df->address; p += sizeof(void*); // mov eax, df->address
+		*p++ = 0xFF; *p++ = ((0x3 & 0x3) << 6) | ((0x7 & 0x2) << 3) | (0x7 & 0x0); // call eax
 
 		if (df->returns)
 		{
-			*p++ = 0x89; *p++ = ((0x3 & 0x3) << 6) | ((0x7 & 0x0) << 3) | (0x7 & 0x1); // mov ecx, eax
+			_X64PREFIX(); *p++ = 0x89; *p++ = ((0x3 & 0x3) << 6) | ((0x7 & 0x0) << 3) | (0x7 & 0x1); // mov ecx, eax
 		}
 
 		for (size_t i = 0; i < df->count; i++)
@@ -97,12 +110,13 @@ dynamic_exec dynamic_func_compile(struct dynamic_func *df)
 
 		if (df->returns)
 		{
-			*p++ = 0x89; *p++ = ((0x3 & 0x3) << 6) | ((0x7 & 0x1) << 3) | (0x7 & 0x0); // mov eax, ecx
+			_X64PREFIX(); *p++ = 0x89; *p++ = ((0x3 & 0x3) << 6) | ((0x7 & 0x1) << 3) | (0x7 & 0x0); // mov eax, ecx
 		}
 
 		*p++ = 0xC3; // ret
 	}
-#endif
+
+#undef _X64PREFIX
 
 #if defined(OS_WINDOWS)
 	unsigned long old = NULL;
